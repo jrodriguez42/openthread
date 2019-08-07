@@ -86,11 +86,17 @@ public:
      * This class defines the callbacks notifying `SubMac` user of changes and events.
      *
      */
-    class Callbacks
+    class Callbacks : public InstanceLocator
     {
-        friend class SubMac;
+    public:
+        /**
+         * This constructor initializes the `Callbacks` object.
+         *
+         * @param[in]  aInstance  A reference to the OpenThread instance.
+         *
+         */
+        explicit Callbacks(Instance &aInstance);
 
-    protected:
         /**
          * This method notifies user of `SubMac` of a received frame.
          *
@@ -100,7 +106,7 @@ public:
          *                       OT_ERROR_NO_BUFS when a frame could not be received due to lack of rx buffer space.
          *
          */
-        void ReceiveDone(Frame *aFrame, otError aError);
+        void ReceiveDone(RxFrame *aFrame, otError aError);
 
         /**
          * This method notifies user of `SubMac` of CCA status (success/failure) for a frame transmission attempt.
@@ -132,11 +138,11 @@ public:
          *                        when there was an error in current transmission attempt.
          *
          */
-        void RecordFrameTransmitStatus(const Frame &aFrame,
-                                       const Frame *aAckFrame,
-                                       otError      aError,
-                                       uint8_t      aRetryCount,
-                                       bool         aWillRetx);
+        void RecordFrameTransmitStatus(const TxFrame &aFrame,
+                                       const RxFrame *aAckFrame,
+                                       otError        aError,
+                                       uint8_t        aRetryCount,
+                                       bool           aWillRetx);
 
         /**
          * The method notifies user of `SubMac` that the transmit operation has completed, providing, if applicable,
@@ -150,7 +156,7 @@ public:
          *                        OT_ERROR_ABORT when transmission was aborted for other reasons.
          *
          */
-        void TransmitDone(Frame &aFrame, Frame *aAckFrame, otError aError);
+        void TransmitDone(TxFrame &aFrame, RxFrame *aAckFrame, otError aError);
 
         /**
          * This method notifies user of `SubMac` that energy scan is complete.
@@ -160,7 +166,7 @@ public:
          */
         void EnergyScanDone(int8_t aMaxRssi);
 
-#if OPENTHREAD_CONFIG_HEADER_IE_SUPPORT
+#if OPENTHREAD_CONFIG_MAC_HEADER_IE_SUPPORT
         /**
          * The method notifies user of `SubMac` to process transmit security for the frame, which  happens when the
          * frame includes Header IE(s) that were updated before transmission.
@@ -171,24 +177,17 @@ public:
          * @param[in]  aFrame      The frame which needs to process transmit security.
          *
          */
-        void FrameUpdated(Frame &aFrame);
+        void FrameUpdated(TxFrame &aFrame);
 #endif
-
-        /**
-         * This constructor initializes the `Callbacks` object.
-         *
-         */
-        Callbacks(void) {}
     };
 
     /**
      * This constructor initializes the `SubMac` object.
      *
      * @param[in]  aInstance  A reference to the OpenThread instance.
-     * @param[in]  aCallbacks A reference to the `Callbacks` object.
      *
      */
-    SubMac(Instance &aInstance, Callbacks &aCallbacks);
+    explicit SubMac(Instance &aInstance);
 
     /**
      * This method gets the capabilities provided by platform radio.
@@ -308,7 +307,7 @@ public:
      * @returns The transmit frame.
      *
      */
-    Frame &GetTransmitFrame(void) { return mTransmitFrame; }
+    TxFrame &GetTransmitFrame(void) { return mTransmitFrame; }
 
     /**
      * This method sends a prepared frame.
@@ -354,7 +353,7 @@ public:
      *                       OT_ERROR_NO_BUFS when a frame could not be received due to lack of rx buffer space.
      *
      */
-    void HandleReceiveDone(Frame *aFrame, otError aError);
+    void HandleReceiveDone(RxFrame *aFrame, otError aError);
 
     /**
      * This method handles a Transmit Started event from radio platform.
@@ -362,7 +361,7 @@ public:
      * @param[in]  aFrame     The frame that is being transmitted.
      *
      */
-    void HandleTransmitStarted(Frame &aFrame);
+    void HandleTransmitStarted(TxFrame &aFrame);
 
     /**
      * This method handles a "Transmit Done" event from radio platform.
@@ -375,7 +374,7 @@ public:
      *                        OT_ERROR_ABORT when transmission was aborted for other reasons.
      *
      */
-    void HandleTransmitDone(Frame &aFrame, Frame *aAckFrame, otError aError);
+    void HandleTransmitDone(TxFrame &aFrame, RxFrame *aAckFrame, otError aError);
 
     /**
      * This method handles "Energy Scan Done" event from radio platform.
@@ -389,7 +388,7 @@ public:
      */
     void HandleEnergyScanDone(int8_t aMaxRssi);
 
-#if OPENTHREAD_CONFIG_HEADER_IE_SUPPORT
+#if OPENTHREAD_CONFIG_MAC_HEADER_IE_SUPPORT
     /**
      * This method handles a "Frame Updated" event from radio platform.
      *
@@ -402,7 +401,7 @@ public:
      * @param[in]  aFrame      The frame which needs to process transmit security.
      *
      */
-    void HandleFrameUpdated(Frame &aFrame);
+    void HandleFrameUpdated(TxFrame &aFrame);
 #endif
 
 private:
@@ -414,7 +413,7 @@ private:
         kMinBackoff        = 1,  ///< Minimum backoff (milliseconds).
         kAckTimeout        = 16, ///< Timeout for waiting on an ACK (milliseconds).
 
-#if OPENTHREAD_CONFIG_ENABLE_PLATFORM_USEC_TIMER
+#if OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE
         kEnergyScanRssiSampleInterval = 128, ///< RSSI sample interval during energy scan, 128 usec
 #else
         kEnergyScanRssiSampleInterval = 1, ///< RSSI sample interval during energy scan, 1 ms
@@ -464,11 +463,11 @@ private:
     bool               mRxOnWhenBackoff;
     int8_t             mEnergyScanMaxRssi;
     uint32_t           mEnergyScanEndTime;
-    Frame &            mTransmitFrame;
-    Callbacks &        mCallbacks;
+    TxFrame &          mTransmitFrame;
+    Callbacks          mCallbacks;
     otLinkPcapCallback mPcapCallback;
     void *             mPcapCallbackContext;
-#if OPENTHREAD_CONFIG_ENABLE_PLATFORM_USEC_TIMER
+#if OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE
     TimerMicro mTimer;
 #else
     TimerMilli mTimer;

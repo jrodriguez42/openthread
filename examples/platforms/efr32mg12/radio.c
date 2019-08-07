@@ -34,6 +34,7 @@
 
 #include <assert.h>
 
+#include "openthread-system.h"
 #include <openthread/config.h>
 #include <openthread/platform/alarm-milli.h>
 #include <openthread/platform/diag.h>
@@ -55,7 +56,6 @@
 #include "rail.h"
 #include "rail_config.h"
 #include "rail_ieee802154.h"
-#include "rtcdriver.h"
 
 enum
 {
@@ -289,7 +289,7 @@ void efr32RadioInit(void)
     efr32ConfigInit(RAILCb_Generic);
 
     CMU_ClockEnable(cmuClock_PRS, true);
-    RTCDRV_Init();
+
     status = RAIL_ConfigSleep(gRailHandle, RAIL_SLEEP_CONFIG_TIMERSYNC_ENABLED);
     assert(status == RAIL_STATUS_NO_ERROR);
 
@@ -538,9 +538,15 @@ otError otPlatRadioTransmit(otInstance *aInstance, otRadioFrame *aFrame)
         status = RAIL_StartTx(gRailHandle, aFrame->mChannel, txOptions, NULL);
     }
 
-    assert(status == RAIL_STATUS_NO_ERROR);
-
-    otPlatRadioTxStarted(aInstance, aFrame);
+    if (status == RAIL_STATUS_NO_ERROR)
+    {
+        otPlatRadioTxStarted(aInstance, aFrame);
+    }
+    else
+    {
+        sTransmitError = OT_ERROR_CHANNEL_ACCESS_FAILURE;
+        sTransmitBusy  = false;
+    }
 
 exit:
     return error;
@@ -685,7 +691,7 @@ static void processNextRxPacket(otInstance *aInstance)
         // See https://github.com/openthread/openthread/pull/3785
         sReceiveFrame.mInfo.mRxInfo.mAckedWithFramePending = true;
 
-#if OPENTHREAD_ENABLE_DIAG
+#if OPENTHREAD_CONFIG_DIAG_ENABLE
 
         if (otPlatDiagModeGet())
         {
@@ -703,6 +709,8 @@ static void processNextRxPacket(otInstance *aInstance)
             }
         }
     }
+
+    otSysEventSignalPending();
 
 exit:
 
@@ -801,6 +809,8 @@ static void RAILCb_Generic(RAIL_Handle_t aRailHandle, RAIL_Events_t aEvents)
             sEnergyScanResultDbm = energyScanResultQuarterDbm / QUARTER_DBM_IN_DBM;
         }
     }
+
+    otSysEventSignalPending();
 }
 
 otError otPlatRadioEnergyScan(otInstance *aInstance, uint8_t aScanChannel, uint16_t aScanDuration)
@@ -820,7 +830,7 @@ void efr32RadioProcess(otInstance *aInstance)
         }
 
         sState = OT_RADIO_STATE_RECEIVE;
-#if OPENTHREAD_ENABLE_DIAG
+#if OPENTHREAD_CONFIG_DIAG_ENABLE
         if (otPlatDiagModeGet())
         {
             otPlatDiagRadioTransmitDone(aInstance, &sTransmitFrame, sTransmitError);
@@ -835,11 +845,14 @@ void efr32RadioProcess(otInstance *aInstance)
         {
             otPlatRadioTxDone(aInstance, &sTransmitFrame, &sReceiveFrame, sTransmitError);
         }
+
+        otSysEventSignalPending();
     }
     else if (sEnergyScanMode == ENERGY_SCAN_MODE_ASYNC && sEnergyScanStatus == ENERGY_SCAN_STATUS_COMPLETED)
     {
         sEnergyScanStatus = ENERGY_SCAN_STATUS_IDLE;
         otPlatRadioEnergyScanDone(aInstance, sEnergyScanResultDbm);
+        otSysEventSignalPending();
     }
 
     processNextRxPacket(aInstance);
